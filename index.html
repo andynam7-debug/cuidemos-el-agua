@@ -1,0 +1,231 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>App Agua</title>
+  <style>
+    body {
+      font-family: 'Comic Sans MS', cursive, sans-serif;
+      background: linear-gradient(to bottom, #a2d4f4, #ffffff);
+      text-align: center;
+      margin: 0;
+      padding: 0;
+    }
+    h1 {
+      color: #0077cc;
+      margin: 10px 0;
+    }
+    #tank {
+      width: 200px;
+      height: 400px;
+      border: 5px solid #333;
+      margin: 20px auto;
+      border-radius: 20px;
+      overflow: hidden;
+      position: relative;
+      background-color: #eee;
+    }
+    #water {
+      position: absolute;
+      bottom: 0;
+      width: 100%;
+      height: 100%;
+      background-color: #00bfff;
+      transition: height 0.5s, background-color 0.5s;
+    }
+    #time, #liters {
+      font-size: 1.5em;
+      margin: 10px 0;
+    }
+    button {
+      font-size: 1em;
+      padding: 10px 20px;
+      margin: 5px;
+      border-radius: 10px;
+      border: none;
+      background-color: #0077cc;
+      color: white;
+      cursor: pointer;
+    }
+    button:hover {
+      background-color: #005fa3;
+    }
+    #history {
+      margin: 20px;
+      text-align: left;
+      max-width: 400px;
+      margin-left: auto;
+      margin-right: auto;
+      background: #f9f9f9;
+      padding: 10px;
+      border-radius: 10px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.2);
+    }
+    #weekly {
+      margin: 20px;
+      padding: 10px;
+      background: #fff7cc;
+      border-radius: 10px;
+      display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Mi Tanque de Agua</h1>
+  <div id="tank"><div id="water"></div></div>
+  <div id="time">Tiempo: 50:00</div>
+  <div id="liters">Litros restantes: 1000</div>
+  <button onclick="startSimulation()">Iniciar</button>
+  <button onclick="resetSimulation()">Reiniciar</button>
+  <button onclick="saveConsumption()">Guardar Consumo</button>
+  <button onclick="exportCSV()">Exportar CSV</button>
+  <div id="weekly">
+    <h3>Acumulado semanal</h3>
+    <p id="weeklyLiters">Litros: 0</p>
+    <p id="weeklyMinutes">Minutos: 0</p>
+    <button onclick="resetWeekly()">Resetear semana</button>
+  </div>
+  <div id="history"><h3>Historial</h3><ul id="historyList"></ul></div>
+
+  <script>
+    let totalLiters = 1000;
+    let currentLiters = totalLiters;
+    let totalMinutes = 50;
+    let currentSeconds = totalMinutes * 60;
+    let interval = null;
+    let weeklyLiters = parseInt(localStorage.getItem('weeklyLiters')) || 0;
+    let weeklyMinutes = parseInt(localStorage.getItem('weeklyMinutes')) || 0;
+    let history = JSON.parse(localStorage.getItem('history')) || [];
+
+    function updateTank() {
+      let percent = currentLiters / totalLiters * 100;
+      let water = document.getElementById('water');
+      water.style.height = percent + '%';
+      if (percent <= 25) water.style.backgroundColor = 'red';
+      else if (percent <= 50) water.style.backgroundColor = 'yellow';
+      else water.style.backgroundColor = '#00bfff';
+      document.getElementById('liters').innerText = 'Litros restantes: ' + currentLiters;
+      let minutes = Math.floor(currentSeconds/60);
+      let seconds = currentSeconds % 60;
+      document.getElementById('time').innerText = 'Tiempo: ' + minutes + ':' + (seconds<10?'0':'') + seconds;
+      document.getElementById('weeklyLiters').innerText = 'Litros: ' + weeklyLiters;
+      document.getElementById('weeklyMinutes').innerText = 'Minutos: ' + weeklyMinutes;
+    }
+
+    function beep() {
+      let ctx = new (window.AudioContext || window.webkitAudioContext)();
+      let osc = ctx.createOscillator();
+      osc.type = 'sine';
+      osc.frequency.value = 800;
+      osc.connect(ctx.destination);
+      osc.start();
+      osc.stop(ctx.currentTime + 0.1);
+    }
+
+    function startSimulation() {
+      if(interval) return;
+      interval = setInterval(()=>{
+        if(currentSeconds > 0 && currentLiters > 0){
+          currentSeconds--;
+          currentLiters--;
+          if(currentLiters % 10 === 0) beep();
+          if(currentLiters <= 250) beep();
+          updateTank();
+        } else {
+          clearInterval(interval);
+          interval = null;
+        }
+      },1000);
+    }
+
+    function resetSimulation() {
+      clearInterval(interval);
+      interval = null;
+      currentLiters = totalLiters;
+      currentSeconds = totalMinutes * 60;
+      updateTank();
+    }
+
+    function saveConsumption() {
+      let name = prompt('Nombre del consumo:');
+      if(!name) return;
+      let usedLiters = totalLiters - currentLiters;
+      let usedMinutes = totalMinutes*60 - currentSeconds;
+      history.push({name, usedLiters, usedMinutes});
+      weeklyLiters += usedLiters;
+      weeklyMinutes += Math.round(usedMinutes/60);
+      localStorage.setItem('history', JSON.stringify(history));
+      localStorage.setItem('weeklyLiters', weeklyLiters);
+      localStorage.setItem('weeklyMinutes', weeklyMinutes);
+      renderHistory();
+      updateTank();
+    }
+
+    function renderHistory(){
+      let list = document.getElementById('historyList');
+      list.innerHTML = '';
+      history.forEach((h,i)=>{
+        let li = document.createElement('li');
+        li.innerText = h.name + ' - ' + h.usedLiters + 'L, ' + Math.round(h.usedMinutes/60) + ' min';
+        list.appendChild(li);
+      });
+    }
+
+    function exportCSV(){
+      let csv = 'Nombre,Litros,Minutos\n';
+      history.forEach(h=>{
+        csv += h.name + ',' + h.usedLiters + ',' + Math.round(h.usedMinutes/60) + '\n';
+      });
+      csv += 'TOTAL SEMANAL,'+weeklyLiters+','+weeklyMinutes+'\n';
+      let blob = new Blob([csv], {type:'text/csv'});
+      let url = URL.createObjectURL(blob);
+      let a = document.createElement('a');
+      a.href = url;
+      a.download = 'consumos.csv';
+      a.click();
+    }
+
+    function resetWeekly(){
+      weeklyLiters = 0;
+      weeklyMinutes = 0;
+      localStorage.setItem('weeklyLiters', weeklyLiters);
+      localStorage.setItem('weeklyMinutes', weeklyMinutes);
+      updateTank();
+    }
+
+    function registerPWA(){
+      const manifest = {
+        name: "App Agua",
+        short_name: "Agua",
+        start_url: ".",
+        display: "standalone",
+        background_color: "#a2d4f4",
+        theme_color: "#0077cc",
+        icons: [
+          { src: "icon-192.png", sizes: "192x192", type: "image/png" },
+          { src: "icon-512.png", sizes: "512x512", type: "image/png" }
+        ]
+      };
+      const blob = new Blob([JSON.stringify(manifest)], {type: 'application/json'});
+      const manifestURL = URL.createObjectURL(blob);
+      let link = document.createElement('link');
+      link.rel = 'manifest';
+      link.href = manifestURL;
+      document.head.appendChild(link);
+      if('serviceWorker' in navigator){
+        const swBlob = new Blob([`
+          self.addEventListener('install', e=>{e.waitUntil(caches.open('app-cache').then(cache=>cache.addAll(['.'])))});
+          self.addEventListener('fetch', e=>{e.respondWith(caches.match(e.request).then(r=>r||fetch(e.request)))});
+        `], {type:'application/javascript'});
+        const swURL = URL.createObjectURL(swBlob);
+        navigator.serviceWorker.register(swURL);
+      }
+    }
+
+    renderHistory();
+    updateTank();
+    registerPWA();
+  </script>
+</body>
+</html>
